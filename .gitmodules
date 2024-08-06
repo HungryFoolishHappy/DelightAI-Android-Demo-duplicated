@@ -1,0 +1,3 @@
+[submodule "DelightAI"]
+	path = DelightAI
+	url = https://github.com/HungryFoolishHappy/DelightAI-Android.git
