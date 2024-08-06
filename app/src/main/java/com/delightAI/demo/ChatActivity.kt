@@ -71,7 +71,7 @@ class ChatActivity : ComponentActivity() {
 
 @Composable
 fun ChatActivityUI(onBackClick: () -> Unit, _messages: SnapshotStateList<Message?>, extras: Bundle?) {
-    var sending by rememberSaveable { mutableStateOf("Hello") }
+    var sending by rememberSaveable { mutableStateOf("") }
     var editText by rememberSaveable { mutableStateOf("") }
     val scrollState = rememberScrollState()
     val scope = rememberCoroutineScope()
