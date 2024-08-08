@@ -71,19 +71,19 @@ class ChatActivity : ComponentActivity() {
 
 @Composable
 fun ChatActivityUI(onBackClick: () -> Unit, _messages: SnapshotStateList<Message?>, extras: Bundle?) {
-    var sending by rememberSaveable { mutableStateOf("") }
+    var text by rememberSaveable { mutableStateOf("") }
     var editText by rememberSaveable { mutableStateOf("") }
     val scrollState = rememberScrollState()
     val scope = rememberCoroutineScope()
 
     DelightAIDemoTheme {
         ChatActivityUIPage(
-            sending,
+            text,
             onEditText = { newText ->
                 editText = newText
             },
             onTextChange = { newText ->
-                sending = newText
+                text = newText
             },
             onMessagesAdd = { newMessage: Message ->
                 _messages.add(newMessage)
@@ -112,7 +112,7 @@ fun ChatActivityUI(onBackClick: () -> Unit, _messages: SnapshotStateList<Message
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatActivityUIPage(
-    sending: String,
+    text: String,
     onEditText: (String) -> Unit,
     onTextChange: (String) -> Unit,
     _messages: SnapshotStateList<Message?>,
@@ -138,7 +138,7 @@ fun ChatActivityUIPage(
             )
         },
         bottomBar = {
-            BottomTextField(sending, onEditText, onTextChange, onMessagesAdd, onMessageChange, extras)
+            BottomTextField(text, onEditText, onTextChange, onMessagesAdd, onMessageChange, extras)
         },
     ) { innerPadding ->
         ChatScreenComponent(
@@ -153,7 +153,7 @@ fun ChatActivityUIPage(
 
 @Composable
 fun BottomTextField(
-    sending: String,
+    text: String,
     onEditText: (String) -> Unit,
     onTextChange: (String) -> Unit,
     onMessagesAdd: (Message) -> Unit,
@@ -171,7 +171,7 @@ fun BottomTextField(
             .padding(16.dp)
     ) {
         TextField(
-            value = sending,
+            value = text,
             onValueChange = onTextChange,
             label = { Text(
                 fontSize = 18.sp,
@@ -185,10 +185,10 @@ fun BottomTextField(
             modifier = Modifier
                 .fillMaxWidth(),
             onClick = {
-                if (sending == "") {
+                if (text == "") {
                     return@Button
                 }
-                val message = Message(isUser = true, text = sending)
+                val message = Message(isUser = true, text = text)
                 onMessagesAdd(message)
 
                 val inputMethodManager = (context as? ComponentActivity)?.getSystemService(Activity.INPUT_METHOD_SERVICE) as InputMethodManager
@@ -197,22 +197,37 @@ fun BottomTextField(
                     val build = ChatBuilder().build()
                     val pollingBuild = PollingBuilder().build()
                     val waitingResponseMessage = Message(isUser = false, text = "waiting for the response ...")
-                    val response = build.send(text = sending, webhook_id, user_id, username, message_id = waitingResponseMessage.id)
+                    val response = build.send(
+                        text = text, // text to DelightAI
+                        webhook_id = webhook_id, // a demo webhook Id, you can use it for testing
+                        user_id = user_id, // user id that send to DelightAI
+                        username = username, // username that send to DelightAI
+                        message_id = waitingResponseMessage.id) // message id
 
                     onMessagesAdd(waitingResponseMessage)
                     onTextChange("")
                     onEditText("")
-                    val tex = response?.text
-                    if (tex != null) {
+
+                    if (response?.error != null) {
+                        response.error!!.message?.let {
+                            onMessageChange(waitingResponseMessage.id, it)
+                        } ?: run {
+                            onMessageChange(waitingResponseMessage.id, "Please try again.")
+                        }
+                        return@launch
+                    }
+
+                    val sendResponseText = response?.text
+                    if (sendResponseText != null) {
                         withContext(Dispatchers.IO) {
                             var loop = 30
                             while(loop > 0) {
                                 val pollingResponse = pollingBuild.polling(webhook_id = response.poll)
                                 if (pollingResponse?.completed == true) {
-                                    val text = pollingResponse.text
-                                    if (text != null) {
-                                        onMessageChange(waitingResponseMessage.id, text)
-                                        onEditText(text)
+                                    val pollingResponseText = pollingResponse.text
+                                    if (pollingResponseText != null) {
+                                        onMessageChange(waitingResponseMessage.id, pollingResponseText)
+                                        onEditText(pollingResponseText)
                                         break
                                     }
                                 } else if (pollingResponse?.new_tokens != "") {
@@ -223,8 +238,14 @@ fun BottomTextField(
                                         onEditText(it)
                                     }
                                 }
-                                Thread.sleep(1_000)
                                 loop--
+                                if (loop == 0) {
+                                    onMessageChange(waitingResponseMessage.id,
+                                        "Please try again"
+                                    )
+                                }
+
+                                Thread.sleep(1_000)
                             }
                         }
                     }
